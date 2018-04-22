@@ -1,6 +1,7 @@
 import socket
 import sys
-import requests
+import os
+
 
 def response_ok(body=b"This is a minimal response", mimetype=b"text/plain"):
     """
@@ -17,34 +18,35 @@ def response_ok(body=b"This is a minimal response", mimetype=b"text/plain"):
         <html><h1>Welcome:</h1></html>\r\n
         '''
     """
-    return b"\r\n".join([
-        b"HTTP/1.1 200 OK",
-        b"Content-Type: text/plain" +mimetype,
-        b"",
-        body
-    ])
+
+    return b"\r\n".join(
+        [b"HTTP/1.1 200 OK", b"Content-Type: " + mimetype, b"", body, ])
 
 
 def parse_request(request):
-     return request.split("\r\n")[0].split(" ")[1]
-
-
-def response_method_not_allowed():
-    """Returns a 405 Method Not Allowed response"""
-    return b"\r\n".join([b"HTTP/1.1 405 405 Method Not Allowed,
-                         b"Content-Type: text/plain", b"",
-                         b"This is a minimal response", ])
-
-
-def response_not_found():
-    """Returns a 404 Not Found response"""
     method, uri, version = request.split("\r\n")[0].split(" ")
 
     if method != "GET":
         raise NotImplementedError
 
     return uri
-    
+
+
+def response_method_not_allowed():
+    """Returns a 405 Method Not Allowed response"""
+    return b"\r\n".join([b"HTTP/1.1 405 Method Not Allowed", b"",
+        b"You can't do that on this server!", ])
+
+
+def response_not_found():
+    """Returns a 404 Not Found response"""
+
+    # TODO: Construct and return a 404 "not found" response
+    # You can re-use most of the code from the 405 Method Not
+    # Allowed response.
+
+    pass
+
 
 def resolve_uri(uri):
     """
@@ -56,8 +58,8 @@ def resolve_uri(uri):
     If the URI is a file, it should return the contents of that file
     and its correct mimetype.
 
-    If the URI does not map to a real location, it should raise an
-    exception that the server can catch to return a 404 response.
+    If the URI does not map to a real location, it should raise a
+    NameError that the server can catch to return a 404 response.
 
     Ex:
         resolve_uri('/a_web_page.html') -> (b"<html><h1>North Carolina...",
@@ -74,12 +76,13 @@ def resolve_uri(uri):
 
     """
 
-    # TODO: Raise a NameError if the requested content is not present
-    # under webroot.
+    # TODO: Fill content and mime_type according to the function description
+    # above. If the provided URI does not correspdond to a real file or
+    # directory, then raise a NameError.
 
-    # TODO: Fill in the appropriate content and mime_type give the URI.
-    # See the assignment guidelines for help on "mapping mime-types", though
-    # you might need to create a special case for handling make_time.py
+    # Hint: When opening a file, use open(filename, "rb") to open and read the
+    # file as a stream of bytes.
+
     content = b"not implemented"
     mime_type = b"not implemented"
 
@@ -87,7 +90,7 @@ def resolve_uri(uri):
 
 
 def server(log_buffer=sys.stderr):
-    address = ('127.0.0.1', 10000)
+    address = ('0.0.0.0', int(os.environ.get('PORT', 10000)))
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     print("making a server on {0}:{1}".format(*address), file=log_buffer)
@@ -102,33 +105,27 @@ def server(log_buffer=sys.stderr):
                 print('connection - {0}:{1}'.format(*addr), file=log_buffer)
                 request = ''
                 while True:
-                    data = conn.recv(16)
+                    data = conn.recv(1024)
                     request += data.decode('utf8')
-                    if len(data) < 1024:
+
+                    # if len(data) < 1024:
+                    #    break
+                    if b'\r\n\r\n' in data:
                         break
 
-                    # Now we have a "request"
-                    # TODO: fulfill the request
-                    try:
-                        uri = parse_request(request)
-                    except NotImplementedError:
-                        response = response_method_not_allowed
-                    else:
-                        # Do some work in here
-                        # to produce the correct body and correct mimetype
-                        # based on the uri
-                        response = response_ok(body=uri.encode(), mimetype=b"text/plain")
+                try:
+                    uri = parse_request(request)
+                except NotImplementedError:
+                    response = response_method_not_allowed()
+                else:
+                    # TODO: resolve_uri will raise a NameError if the file
+                    # specified by uri can't be found. If it does raise a
+                    # NameError, then let response get response_not_found()
+                    # instead of response_ok()
+                    body, mimetype = resolve_uri(uri)
+                    response = response_ok(body=body, mimetype=mimetype)
 
-                    conn.sendall(response)
-
-                    #print('received "{0}"'.format(data), file=log_buffer)
-                    #if data:
-                    #    print('sending data back to client', file=log_buffer)
-                    #    conn.sendall(data)
-                    #else:
-                    #    msg = 'no more data from {0}:{1}'.format(*addr)
-                    #    print(msg, log_buffer)
-                    #    break
+                conn.sendall(response)
             finally:
                 conn.close()
 
@@ -140,5 +137,3 @@ def server(log_buffer=sys.stderr):
 if __name__ == '__main__':
     server()
     sys.exit(0)
-
-
